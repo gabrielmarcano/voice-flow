@@ -121,21 +121,19 @@ function App() {
 			if (uploadError) throw uploadError;
 
 			// 2. Generate a Temporary Signed URL (Valid for 60 seconds)
-			// This gives the AI just enough time to download the file.
 			const { data: signedData, error: signedError } = await supabase.storage
 				.from("voice-notes")
 				.createSignedUrl(fileName, 60);
 
 			if (signedError) throw signedError;
 
-			// We use the signed URL for the AI processing
 			const audioUrlForAI = signedData.signedUrl;
 
-			// 2. AI Processing
+			// 3. AI Processing
 			const { data: aiResponse, error: fnError } =
 				await supabase.functions.invoke("process-audio", {
 					body: {
-						audioUrl: audioUrlForAI, // Pass the temporary link
+						audioUrl: audioUrlForAI,
 						userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 						referenceDate: new Date().toISOString(),
 					},
@@ -147,20 +145,20 @@ function App() {
 				data: { title, date },
 			} = aiResponse;
 
-			// 3. Calendar Sync
+			// 4. Calendar Sync
 			const isSynced = await createCalendarEvent(title, date);
 
-			// 4. Save to DB
-			// NOTE: We are saving the 'fileName' (path) as audio_url for reference,
-			// because saving 'audioUrlForAI' would be useless (it expires in 60s).
+			// 5. Save to DB
+			const isoEventDate = new Date(date).toISOString();
+
 			const { data: insertedTask, error: dbError } = await supabase
 				.from("tasks")
 				.insert({
 					user_id: user.id,
-					audio_url: fileName, // Store the Path, not the temporary URL
+					audio_url: fileName,
 					transcription: transcription,
 					title: title,
-					event_date: date,
+					event_date: isoEventDate,
 					is_synced: isSynced,
 				})
 				.select()
@@ -168,7 +166,7 @@ function App() {
 
 			if (dbError) throw dbError;
 
-			// 5. Update UI
+			// 6. Update UI
 			setTasks((prev) =>
 				prev.map((t) => (t.id === tempId ? (insertedTask as Task) : t)),
 			);
