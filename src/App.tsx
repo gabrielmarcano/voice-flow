@@ -125,9 +125,14 @@ function App() {
 			} = supabase.storage.from("voice-notes").getPublicUrl(fileName);
 
 			// 2. AI Processing
+			// We pass the browser's current date and timezone so the AI knows what time it is.
 			const { data: aiResponse, error: fnError } =
 				await supabase.functions.invoke("process-audio", {
-					body: { audioUrl: publicUrl },
+					body: {
+						audioUrl: publicUrl,
+						userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+						referenceDate: new Date().toISOString(),
+					},
 				});
 			if (fnError) throw fnError;
 
