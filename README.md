@@ -1,73 +1,155 @@
-# React + TypeScript + Vite
+# VoiceFlow - AI Voice to Calendar Assistant
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+VoiceFlow is a full-stack productivity tool that converts voice notes into structured Google Calendar events instantly. It leverages React, Supabase, and Google Gemini 2.5 Flash to provide a seamless, latency-optimized experience.
 
-Currently, two official plugins are available:
+## 🚀 Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Voice-First Interface:** Record audio directly in the browser with visual feedback.
 
-## React Compiler
+- **AI Intelligence:** Uses Gemini 2.5 Flash (Multimodal) to transcribe audio and extract date/time intent in a single pass.
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+- **Smart Date Handling:** Understands relative dates (e.g., "Lunch tomorrow at 2 PM") by injecting the user's local timezone context.
 
-## Expanding the ESLint configuration
+- **Secure Architecture:**
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+  - **Supabase Storage:** Private buckets with Row Level Security (RLS).
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+  - **Signed URLs:** Temporary access tokens for AI processing (no public files).
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+  - **Edge Functions:** Server-side AI processing to hide API keys.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- **Google Calendar Sync:** Direct integration with the user's primary calendar.
+
+- **Optimistic UI:** Immediate interface feedback while background processes run.
+
+## 🛠️ Tech Stack
+
+**Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4.
+
+**Backend:** Supabase (PostgreSQL, Auth, Storage, Edge Functions).
+
+**AI Model:** Google Gemini 2.5 Flash (via Google AI Studio).
+
+**Deployment:** Vercel (Frontend), Supabase (Backend).
+
+## ⚙️ Prerequisites
+
+- Node.js (v20+)
+
+- Supabase Account
+
+- Google Cloud Platform Project (for OAuth & Calendar API)
+
+- Google AI Studio Key (for Gemini)
+
+## 📦 Setup Guide
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/gabrielmarcano/voice-flow.git
+cd voice-flow
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Environment Variables
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Create a .env.local file in the root:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-anon-key
+```
+
+### 3. Google Cloud Setup
+
+1. Create a project in Google Cloud Console.
+
+2. **Enable APIs:** Enable "Google Calendar API".
+
+3. **OAuth Consent Screen:** Add https://your-project.supabase.co to Authorized Domains.
+
+4. **Credentials:** Create OAuth 2.0 Client ID.
+
+    - **Authorized Origins:** http://localhost:5173 (and your production URL).
+
+    - **Redirect URIs:** https://your-project.supabase.co/auth/v1/callback.
+
+### 4. Supabase Setup
+
+### Auth
+
+- Go to **Authentication** -> **Providers** -> **Google**.
+
+- Paste your Client ID and Secret from Google Cloud.
+
+- Scopes: Add https://www.googleapis.com/auth/calendar.
+
+### Database Schema
+
+Run this in the Supabase SQL Editor:
+
+```sql
+-- Create Tasks Table
+create table tasks (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  audio_url text,
+  transcription text,
+  title text,
+  event_date timestamp with time zone,
+  is_synced boolean default false
+);
+
+-- Enable RLS
+alter table tasks enable row level security;
+
+-- Policies
+create policy "Users can see own tasks" on tasks
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own tasks" on tasks
+  for insert with check (auth.uid() = user_id);
+```
+
+### Storage
+
+1. Create a Private bucket named `voice-notes`.
+
+2. Add RLS Policy to allow authenticated uploads (SQL):
+
+```sql
+create policy "Allow Authenticated Uploads"
+on storage.objects for insert to authenticated
+with check ( bucket_id = 'voice-notes' );
+```
+
+### Edge Function
+
+1. Go to your **Supabase Dashboard** and navigate to Edge Functions.
+
+2. Click **Deploy a new Function** and name it `process-audio`.
+
+3. Add a new secret and name it `GEMINI_API_KEY`.
+
+
+## 🏃‍♂️ Running Locally
+
+```bash
+npm run dev
+```
+
+Open http://localhost:5173.
+
+## 🔒 Security Note
+
+This app uses **Signed URLs** for AI processing. The `voice-notes` bucket is private. When a user records audio:
+
+1. File is uploaded to a private bucket.
+
+2. Client requests a temporary (60s) signed URL.
+
+3. Edge Function uses this temporary URL to process audio.
+
+4. URL expires immediately after, keeping user data safe.
