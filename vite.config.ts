@@ -5,4 +5,9 @@ import { defineConfig } from "vite";
 // https://vite.dev/config/
 export default defineConfig({
 	plugins: [tailwindcss(), react()],
+	build: {
+		rollupOptions: {
+			external: ["src/lib/edge_function.ts"],
+		},
+	},
 });
